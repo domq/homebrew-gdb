@@ -115,16 +115,47 @@ WUNUSED_STATUS
 end
 
 __END__
-# https://sourceware.org/bugzilla/show_bug.cgi?id=24069#c11
+# https://sourceware.org/bugzilla/show_bug.cgi?id=24069#c6 (variation)
+# https://sourceware.org/bugzilla/show_bug.cgi?id=24069#c14
 diff -U3 gdb-10.1-ORIG/gdb/darwin-nat.c gdb-10.1/gdb/darwin-nat.c
 --- gdb-10.1-ORIG/gdb/darwin-nat.c	2020-10-24 06:23:02.000000000 +0200
 +++ gdb-10.1/gdb/darwin-nat.c	2021-04-07 20:17:15.000000000 +0200
-@@ -1108,9 +1108,6 @@
- 	      inferior_debug (4, _("darwin_wait: pid=%d exit, status=0x%x\n"),
- 			      res_pid, wstatus);
-
+@@ -1055,7 +1053,7 @@ darwin_nat_target::decode_message (mach_msg_header_t *hdr,
+     }
+   else if (hdr->msgh_id == 0x48)
+     {
+-      /* MACH_NOTIFY_DEAD_NAME: notification for exit.  */
++      /* MACH_NOTIFY_DEAD_NAME: notification for exit *or* WIFSTOPPED.  */
+       int res;
+ 
+       res = darwin_decode_notify_message (hdr, &inf);
+@@ -1098,19 +1096,23 @@ darwin_nat_target::decode_message (mach_msg_header_t *hdr,
+ 		{
+ 		  status->kind = TARGET_WAITKIND_EXITED;
+ 		  status->value.integer = WEXITSTATUS (wstatus);
++		  inferior_debug (4, _("darwin_wait: pid=%d exit, status=0x%x\n"),
++				  res_pid, wstatus);
++		}
++	      else if (WIFSTOPPED (wstatus))
++		{
++		  status->kind = TARGET_WAITKIND_IGNORE;
++		  inferior_debug (4, _("darwin_wait: pid %d received WIFSTOPPED\n"), res_pid);
++		  return minus_one_ptid;
+ 		}
+ 	      else
+ 		{
+ 		  status->kind = TARGET_WAITKIND_SIGNALLED;
+ 		  status->value.sig = gdb_signal_from_host (WTERMSIG (wstatus));
++		  inferior_debug (4, _("darwin_wait: pid=%d received signal %d\n"),
++			      res_pid, status->value.sig);
+ 		}
+ 
+-	      inferior_debug (4, _("darwin_wait: pid=%d exit, status=0x%x\n"),
+-			      res_pid, wstatus);
+-
 -	      /* Looks necessary on Leopard and harmless...  */
 -	      wait4 (inf->pid, &wstatus, 0, NULL);
 -
  	      return ptid_t (inf->pid);
  	    }
+ 	  else
