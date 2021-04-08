@@ -1,4 +1,4 @@
-class GdbAT101 < Formula
+class Gdb < Formula
   desc "GNU debugger"
   homepage "https://www.gnu.org/software/gdb/"
   url "https://ftp.gnu.org/gnu/gdb/gdb-10.1.tar.xz"
@@ -10,6 +10,9 @@ class GdbAT101 < Formula
 
   depends_on "python@3.9"
   depends_on "xz" # required for lzma support
+  head do
+    depends_on "gmp"
+  end
 
   uses_from_macos "expat"
   uses_from_macos "ncurses"
@@ -30,7 +33,45 @@ class GdbAT101 < Formula
     EOS
   end
 
-  patch :DATA
+  patch :DATA   # Common (stable + head) patches at bottom of this file
+
+  stable do
+    patch <<BUG_26861
+diff -U3 gdb-10.1-ORIG/gdb/target.c gdb-10.1/gdb/target.c
+--- gdb-10.1-ORIG/gdb/target.c	2020-10-24 06:23:02.000000000 +0200
++++ gdb-10.1/gdb/target.c	2021-04-07 20:18:56.000000000 +0200
+@@ -2146,7 +2146,7 @@
+ void
+ target_mourn_inferior (ptid_t ptid)
+ {
+-  gdb_assert (ptid == inferior_ptid);
++  gdb_assert (ptid.pid () == inferior_ptid.pid ());
+   current_top_target ()->mourn_inferior ();
+
+   /* We no longer need to keep handles on any of the object files.
+BUG_26861
+  end
+
+  head do
+    ## The need for this might go away any minute (and then this patch
+    ## will probably fail to apply). If that happens, just remove this
+    ## whole `head do` ... `end` section
+    patch <<WUNUSED_STATUS
+diff --git a/gdb/darwin-nat.c b/gdb/darwin-nat.c
+index 587f5317416..a6790792fb6 100644
+--- a/gdb/darwin-nat.c
++++ b/gdb/darwin-nat.c
+@@ -903,8 +903,6 @@ darwin_suspend_inferior_threads (struct inferior *inf)
+ void
+ darwin_nat_target::resume (ptid_t ptid, int step, enum gdb_signal signal)
+ {
+-  struct target_waitstatus status;
+-
+   int nsignal;
+
+   inferior_debug
+WUNUSED_STATUS
+  end
 
   def install
     args = %W[
@@ -42,6 +83,13 @@ class GdbAT101 < Formula
       --with-python=#{Formula["python@3.9"].opt_bin}/python3
       --disable-binutils
     ]
+
+    if build.head? then
+      args += %W[
+      --with-libgmp-prefix=#{Formula["gmp"].opt_prefix}
+      --with-liblzma-prefix=#{Formula["xz"].opt_prefix}
+      ]
+    end
 
     mkdir "build" do
       system "../configure", *args
@@ -80,16 +128,3 @@ diff -U3 gdb-10.1-ORIG/gdb/darwin-nat.c gdb-10.1/gdb/darwin-nat.c
 -
  	      return ptid_t (inf->pid);
  	    }
- 	  else
-diff -U3 gdb-10.1-ORIG/gdb/target.c gdb-10.1/gdb/target.c
---- gdb-10.1-ORIG/gdb/target.c	2020-10-24 06:23:02.000000000 +0200
-+++ gdb-10.1/gdb/target.c	2021-04-07 20:18:56.000000000 +0200
-@@ -2146,7 +2146,7 @@
- void
- target_mourn_inferior (ptid_t ptid)
- {
--  gdb_assert (ptid == inferior_ptid);
-+  gdb_assert (ptid.pid () == inferior_ptid.pid ());
-   current_top_target ()->mourn_inferior ();
-
-   /* We no longer need to keep handles on any of the object files.
