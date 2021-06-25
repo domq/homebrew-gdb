@@ -51,7 +51,7 @@ diff -U3 gdb-10.1-ORIG/gdb/target.c gdb-10.1/gdb/target.c
    /* We no longer need to keep handles on any of the object files.
 BUG_26861
    
-    patch <<BUGFIX_25560_27365
+    patch <<BUGFIX_25560/27365
 diff --git a/gdb/exec.c b/gdb/exec.c
 index 68b35204068..c312b71f475 100644
 --- a/gdb/exec.c
@@ -66,7 +66,7 @@ index 68b35204068..c312b71f475 100644
    if (deprecated_file_changed_hook)
      deprecated_file_changed_hook (arg);
  }
-BUGFIX_25560_27365
+BUGFIX_25560/27365
   end
 
   head do
