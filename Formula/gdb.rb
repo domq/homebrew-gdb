@@ -50,6 +50,23 @@ diff -U3 gdb-10.1-ORIG/gdb/target.c gdb-10.1/gdb/target.c
 
    /* We no longer need to keep handles on any of the object files.
 BUG_26861
+   
+    patch <<BUGFIX_25560_27365
+diff --git a/gdb/exec.c b/gdb/exec.c
+index 68b35204068..c312b71f475 100644
+--- a/gdb/exec.c
++++ b/gdb/exec.c
+@@ -552,8 +552,8 @@ file_command (const char *arg, int from_tty)
+ {
+   /* FIXME, if we lose on reading the symbol file, we should revert
+      the exec file, but that's rough.  */
+-  exec_file_command (arg, from_tty);
+   symbol_file_command (arg, from_tty);
++  exec_file_command (arg, from_tty);
+   if (deprecated_file_changed_hook)
+     deprecated_file_changed_hook (arg);
+ }
+BUGFIX_25560_27365
   end
 
   head do
