@@ -1,14 +1,15 @@
 class Gdb < Formula
   desc "GNU debugger"
   homepage "https://www.gnu.org/software/gdb/"
-  url "https://ftp.gnu.org/gnu/gdb/gdb-10.1.tar.xz"
-  mirror "https://ftpmirror.gnu.org/gdb/gdb-10.1.tar.xz"
-  sha256 "f82f1eceeec14a3afa2de8d9b0d3c91d5a3820e23e0a01bbb70ef9f0276b62c0"
+  url "https://ftp.gnu.org/gnu/gdb/gdb-13.1.tar.xz"
+  mirror "https://ftpmirror.gnu.org/gdb/gdb-13.1.tar.xz"
+  sha256 "115ad5c18d69a6be2ab15882d365dda2a2211c14f480b3502c6eba576e2e95a0"
   license "GPL-3.0-or-later"
   revision 1
   head "https://sourceware.org/git/binutils-gdb.git"
 
-  depends_on "python@3.9"
+  depends_on "python@3.11"
+  depends_on "texinfo" => :build
   depends_on "xz" # required for lzma support
   head do
     depends_on "gmp"
@@ -33,62 +34,7 @@ class Gdb < Formula
     EOS
   end
 
-  patch :DATA   # Common (stable + head) patches at bottom of this file
-
-  stable do
-    patch <<BUG_26861
-diff -U3 gdb-10.1-ORIG/gdb/target.c gdb-10.1/gdb/target.c
---- gdb-10.1-ORIG/gdb/target.c	2020-10-24 06:23:02.000000000 +0200
-+++ gdb-10.1/gdb/target.c	2021-04-07 20:18:56.000000000 +0200
-@@ -2146,7 +2146,7 @@
- void
- target_mourn_inferior (ptid_t ptid)
- {
--  gdb_assert (ptid == inferior_ptid);
-+  gdb_assert (ptid.pid () == inferior_ptid.pid ());
-   current_top_target ()->mourn_inferior ();
-
-   /* We no longer need to keep handles on any of the object files.
-BUG_26861
-   
-    patch <<BUGFIX_25560_27365
-diff --git a/gdb/exec.c b/gdb/exec.c
-index 68b35204068..c312b71f475 100644
---- a/gdb/exec.c
-+++ b/gdb/exec.c
-@@ -552,8 +552,8 @@ file_command (const char *arg, int from_tty)
- {
-   /* FIXME, if we lose on reading the symbol file, we should revert
-      the exec file, but that's rough.  */
--  exec_file_command (arg, from_tty);
-   symbol_file_command (arg, from_tty);
-+  exec_file_command (arg, from_tty);
-   if (deprecated_file_changed_hook)
-     deprecated_file_changed_hook (arg);
- }
-BUGFIX_25560_27365
-  end
-
-  head do
-    ## The need for this might go away any minute (and then this patch
-    ## will probably fail to apply). If that happens, just remove this
-    ## whole `head do` ... `end` section
-    patch <<WUNUSED_STATUS
-diff --git a/gdb/darwin-nat.c b/gdb/darwin-nat.c
-index 587f5317416..a6790792fb6 100644
---- a/gdb/darwin-nat.c
-+++ b/gdb/darwin-nat.c
-@@ -903,8 +903,6 @@ darwin_suspend_inferior_threads (struct inferior *inf)
- void
- darwin_nat_target::resume (ptid_t ptid, int step, enum gdb_signal signal)
- {
--  struct target_waitstatus status;
--
-   int nsignal;
-
-   inferior_debug
-WUNUSED_STATUS
-  end
+  patch :DATA
 
   def install
     args = %W[
@@ -97,7 +43,7 @@ WUNUSED_STATUS
       --disable-debug
       --disable-dependency-tracking
       --with-lzma
-      --with-python=#{Formula["python@3.9"].opt_bin}/python3
+      --with-python=#{Formula["python@3.11"].opt_bin}/python3
       --disable-binutils
     ]
 
@@ -132,47 +78,18 @@ WUNUSED_STATUS
 end
 
 __END__
-# https://sourceware.org/bugzilla/show_bug.cgi?id=24069#c6 (variation)
-# https://sourceware.org/bugzilla/show_bug.cgi?id=24069#c14
-diff -U3 gdb-10.1-ORIG/gdb/darwin-nat.c gdb-10.1/gdb/darwin-nat.c
---- gdb-10.1-ORIG/gdb/darwin-nat.c	2020-10-24 06:23:02.000000000 +0200
-+++ gdb-10.1/gdb/darwin-nat.c	2021-04-07 20:17:15.000000000 +0200
-@@ -1055,7 +1053,7 @@ darwin_nat_target::decode_message (mach_msg_header_t *hdr,
-     }
-   else if (hdr->msgh_id == 0x48)
-     {
--      /* MACH_NOTIFY_DEAD_NAME: notification for exit.  */
-+      /* MACH_NOTIFY_DEAD_NAME: notification for exit *or* WIFSTOPPED.  */
-       int res;
- 
-       res = darwin_decode_notify_message (hdr, &inf);
-@@ -1098,19 +1096,23 @@ darwin_nat_target::decode_message (mach_msg_header_t *hdr,
- 		{
- 		  status->kind = TARGET_WAITKIND_EXITED;
- 		  status->value.integer = WEXITSTATUS (wstatus);
-+		  inferior_debug (4, _("darwin_wait: pid=%d exit, status=0x%x\n"),
-+				  res_pid, wstatus);
-+		}
-+	      else if (WIFSTOPPED (wstatus))
-+		{
-+		  status->kind = TARGET_WAITKIND_IGNORE;
-+		  inferior_debug (4, _("darwin_wait: pid %d received WIFSTOPPED\n"), res_pid);
-+		  return minus_one_ptid;
- 		}
- 	      else
- 		{
- 		  status->kind = TARGET_WAITKIND_SIGNALLED;
- 		  status->value.sig = gdb_signal_from_host (WTERMSIG (wstatus));
-+		  inferior_debug (4, _("darwin_wait: pid=%d received signal %d\n"),
-+			      res_pid, status->value.sig);
- 		}
- 
--	      inferior_debug (4, _("darwin_wait: pid=%d exit, status=0x%x\n"),
--			      res_pid, wstatus);
--
--	      /* Looks necessary on Leopard and harmless...  */
--	      wait4 (inf->pid, &wstatus, 0, NULL);
--
- 	      return ptid_t (inf->pid);
- 	    }
- 	  else
+# https://sourceware.org/bugzilla/show_bug.cgi?id=25560#c1
+diff --git a/gdb/exec.c b/gdb/exec.c
+index 68b35204068..c312b71f475 100644
+--- a/gdb/exec.c
++++ b/gdb/exec.c
+@@ -552,8 +552,8 @@ file_command (const char *arg, int from_tty)
+ {
+   /* FIXME, if we lose on reading the symbol file, we should revert
+      the exec file, but that's rough.  */
+-  exec_file_command (arg, from_tty);
+   symbol_file_command (arg, from_tty);
++  exec_file_command (arg, from_tty);
+   if (deprecated_file_changed_hook)
+     deprecated_file_changed_hook (arg);
+ }
